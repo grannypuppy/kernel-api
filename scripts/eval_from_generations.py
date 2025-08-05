@@ -10,7 +10,7 @@ from src import eval, utils, compile
 import torch
 import os
 import multiprocessing as mp
-
+from collections import defaultdict
 
 from datasets import load_dataset
 
@@ -123,7 +123,7 @@ def fetch_kernel_from_disk(run_dir: str, level: int, problem_id: int, sample_id:
     """
     Fetch kernel file from disk (stored in runs/{run_name})
     """
-    kernel_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_{sample_id}_kernel.py")
+    kernel_path = os.path.join(run_dir, f"level_{level}_problem_{problem_id}_sample_0_kernel_{sample_id}.py")
     
     if os.path.exists(kernel_path):
         return read_file(kernel_path)
@@ -343,10 +343,12 @@ def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: Kerne
         with open(eval_file_path, 'r') as f:
             eval_results = json.load(f)
     else:
-        eval_results = {}
+        eval_results = defaultdict(list)
     
     # Add new result
-    eval_results[str(problem_id)] = {
+    if str(problem_id) not in eval_results:
+        eval_results[str(problem_id)] = []
+    eval_results[str(problem_id)].append({
         # assume 1 sample for now, will think about how to do this better for more samples
         'sample_id': sample_id,
         'compiled': eval_result.compiled,
@@ -354,7 +356,7 @@ def add_to_eval_results_file(problem_id: int, sample_id: int, eval_result: Kerne
         'metadata': check_metadata_serializable_all_types(eval_result.metadata),
         'runtime': eval_result.runtime,
         'runtime_stats': eval_result.runtime_stats,
-    }
+    })
     
     # Write updated results back to file
     if not os.path.exists(eval_file_path):
@@ -418,9 +420,9 @@ def main(config: EvalConfig):
 
     total_work = []
     for problem_id in range(problem_id_range.start, problem_id_range.stop + 1): # end index is inclusive
-        sample_id = 0 # only evaluate 1 sample for now
-        if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
-            total_work.append((problem_id, sample_id))
+        for sample_id in range(16):
+            if not check_if_eval_exists_local(problem_id, sample_id, eval_file_path):
+                total_work.append((problem_id, sample_id))
 
     print(f"Start evaluation on {len(total_work)} unevaluated samples in range: {problem_id_range}")
     # Build Cache on CPU as that is faster

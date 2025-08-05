@@ -104,18 +104,24 @@ def generate_sample_single(work: WorkArgs, config: GenerationConfig, dataset, in
             f.write(custom_cuda_prompt)
 
     # Query server with constructed prompt
-    custom_cuda = inference_server(custom_cuda_prompt)
-    custom_cuda = extract_first_code(custom_cuda, ["python", "cpp"])
-    # check LLM is able to generate custom CUDA code
-    assert custom_cuda is not None, "Custom CUDA code generation failed"
+    raw_responses = inference_server(custom_cuda_prompt)
+    for i, raw_response in enumerate(raw_responses):
+        raw_response_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_raw_response_{i}.json")
+        with open(raw_response_path, "w") as f:
+            json.dump(raw_response, f)
+            
+        custom_cuda = extract_first_code(raw_response, ["python", "cpp"])
+        # check LLM is able to generate custom CUDA code
+        assert custom_cuda is not None, "Custom CUDA code generation failed"
 
-    if config.verbose:
-        print(f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}")
+        if config.verbose:
+            print(f"Generated sample {work.sample_id} for problem {problem_number}: {problem_name}")
 
-    # Store to local file
-    kernel_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel.py")
-    with open(kernel_path, "w") as f:
-        f.write(custom_cuda)
+        # Store to local file
+
+        kernel_path = os.path.join(run_dir, f"level_{config.level}_problem_{work.problem_id}_sample_{work.sample_id}_kernel_{i}.py")
+        with open(kernel_path, "w") as f:
+            f.write(custom_cuda)
     
     return True
     
@@ -124,6 +130,8 @@ def generate_sample_launcher(work: WorkArgs, config: GenerationConfig, dataset, 
     try:
         return generate_sample_single(work, config, dataset, inference_server, run_dir)
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Error generating sample {work.problem_id} {work.sample_id}: {e}")
         return None
 

@@ -116,11 +116,11 @@ def query_server(
     # Select model and client based on arguments
     match server_type:
         case "sglang":
-            url = f"http://{server_address}:{server_port}"
+            url = f"http://{server_address}:9999"
             client = OpenAI(
                 api_key=SGLANG_KEY, base_url=f"{url}/v1", timeout=None, max_retries=0
             )
-            model = "default"
+            model = model_name
         case "deepseek":
             client = OpenAI(
                 api_key=DEEPSEEK_KEY,
@@ -375,8 +375,8 @@ SERVER_PRESETS = {
     },
     "sglang": {  # this is for running locally, mostly for Llama
         "temperature": 0.8, # human eval pass@N temperature
-        "server_port": 10210,
-        "server_address": "matx2.stanford.edu",
+        "server_port": 30000,
+        "server_address": "localhost",
         "max_tokens": 8192,
     },
     "anthropic": {  # for Claude 3.5 Sonnet
@@ -422,14 +422,14 @@ def create_inference_server_from_presets(server_type: str = None,
         if time_generation:
             start_time = time.time()
             response = query_server(
-                prompt, server_type=server_type, **server_args
+                prompt, server_type=server_type, num_completions=16,**server_args
             )
             end_time = time.time()
             print(f"[Timing] Inference took {end_time - start_time:.2f} seconds")
             return response
         else:
             return query_server(
-                prompt, server_type=server_type, **server_args
+                prompt, server_type=server_type, num_completions=16, **server_args
             )
     
     return _query_llm
