@@ -48,6 +48,8 @@ class GenerationConfig(Config):
         self.model_name = "deepseek-coder"
         self.max_tokens = 4096
         self.temperature = 0.0
+        self.num_completions = 16
+        self.server_port = 3000
         
         # Logging
         # Top Directory to Store Runs
@@ -196,6 +198,8 @@ def main(config: GenerationConfig):
                                                         model_name=config.model_name,
                                                         temperature=config.temperature,
                                                         max_tokens=config.max_tokens,
+                                                        num_completions=config.num_completions,
+                                                        server_port=config.server_port,
                                                         verbose=config.verbose)
 
     # Launch workers
