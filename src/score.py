@@ -44,9 +44,9 @@ def geometric_mean_speed_ratio_correct_only_batch(actual_info: np.ndarray, basel
         correct_speed, incorrect_speed = [], []
         for x in entry:
             if x["correctness"]:
-                correct_speed.append(x["runtime"]/base_speed)
+                correct_speed.append(base_speed/x["runtime"])
             else:
-                incorrect_speed.append(1)
+                incorrect_speed.append(0)
         # if len(correct_speed) == 0:
         #     continue
         speedup = np.sum(correct_speed+incorrect_speed)/16
@@ -67,9 +67,9 @@ def fastp_batch(actual_info: np.ndarray, baseline_speed: np.ndarray, n: int, p: 
         correct_speed, incorrect_speed = [], []
         for x in entry:
             if x["correctness"]:
-                correct_speed.append(x["runtime"]/base_speed)
+                correct_speed.append(base_speed/x["runtime"])
             else:
-                incorrect_speed.append(1)
+                incorrect_speed.append(0)
         # if len(correct_speed) == 0:
         #     continue
         speed_up_avg = correct_speed + incorrect_speed
