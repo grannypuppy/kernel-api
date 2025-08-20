@@ -1,158 +1,139 @@
-# KernelBench: Can LLMs Write Efficient GPU Kernels? [ICML '25]
-[arXiv](https://arxiv.org/html/2502.10517v1) | [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) | [HuggingFace Dataset](https://huggingface.co/datasets/ScalingIntelligence/KernelBench) | 
+# KernelBench API
 
-## Versions
-The huggingface dataset is updated to v0.1.
-- [v0.1](https://github.com/ScalingIntelligence/KernelBench/tree/v0.1) - Latest version (also main branch)
-- [v0](https://github.com/ScalingIntelligence/KernelBench/tree/v0) - Original Release
+## Getting Started
 
-A benchmark for evaluating LLMs' ability to generate efficient GPU kernels
+### Prerequisites
 
-<img src="./assets/figures/KernelBenchMascot.png" width="200">
+- [Docker](https://www.docker.com/get-started) installed on your machine.
+- An NVIDIA GPU with the appropriate drivers installed.
+- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) to enable GPU access for Docker containers.
 
-<!-- See [blog post](https://scalingintelligence.stanford.edu/blogs/kernelbench/) and [arXiv paper](https://arxiv.org/html/2502.10517v1) for more details. -->
+### 1. Pull the Docker Image
 
-## 👋 Task Description
-We structure the problem for LLM to transpile operators described in PyTorch to CUDA kernels, at whatever level of granularity it desires to.
-![KernelBenchMascot](./assets/figures/KernelBenchWorkFlow.png)
+Pull the pre-built image from Docker Hub.
 
-We construct KernelBench to have 4 Levels of categories:
-- **Level 1 🧱**:  Single-kernel operators (100 Problems)
-    The foundational building blocks of neural nets (Convolutions, Matrix multiplies, Layer normalization)
-- **Level 2 🔗**:  Simple fusion patterns (100 Problems)
-    A fused kernel would be faster than separated kernels (Conv + Bias + ReLU, Matmul + Scale + Sigmoid)
-- **Level 3 ⚛️**:  Full model architectures (50 Problems)
-    Optimize entire model architectures end-to-end (MobileNet, VGG, MiniGPT, Mamba) 
-- **Level 4 🤗**:  Level Hugging Face 
-    Optimize whole model architectures from HuggingFace
-
-## ⚖️ Evaluation
-#### Methodology
-To evaluate model-generated kernels, we need to check if they:
-- **is correct ✅**: check against reference torch operators `n_correctness` times on randomized inputs.
-- **is performant ⏱️**: compare against reference torch operators `n_trial` times to measure speedup between runtimes.
-
-Check out `src/eval.py` for details on how we implement correctness check and timing. 
-
-We provide a convenient script `scripts/run_and_check.py` to evaluate one single sample source code against a reference source code, check correctness and compute speedup. You can use this to evaluate a model-generated kernel. 
-
-#### Overall Benchmark Metric
-
-Since we need to capture **both** correctness and performance, we define a metric `fast_p`: fraction of tasks that are both correct and have a speedup greater than threshold `p`; speedup is computed as the ratio of PyTorch reference wall-clock time to generated kernel time.
-
-Some examples to illustrate this metric that filters based on speedups:
-* `fast_1` is the fraction of tasks that LM-generated kernels are both correct and **faster** than PyTorch baseline
-* `fast_2` is the fraction of tasks that LM-generated kernels are both correct and **at least 2x faster** than PyTorch baseline
-* `fast_0` is the fraction of tasks that LM-generated kernels are **correct**. (same as correctness rate)
-
-You can increase speedup threshold `p` to make the task more challenging.
-
-#### Compute Overall Benchmark Performance
-
-We provide a script `scripts/greedy_analysis.py` to compute the overall benchmark performance. 
-Since we need to capture **both** correctness and performance, we use a metric `fast_p`: fraction of tasks that are both correct and have a speedup greater than threshold `p`; speedup is computed as the ratio of PyTorch reference wall-clock time to generated kernel time.
-
-<!-- TODO: update to provide fast_p measurement script -->
-
-## 🔍 Directory Structure
-We organize the repo into the following structure:
-```
-KernelBench/
-├── assets/
-├── KernelBench/ # Benchmark dataset files
-├── src/ # KernelBench logic code
-│   ├── unit_tests/  
-│   ├── prompts/
-│   ├── ....
-├── scripts/ # helpful scripts to run the benchmark
-├── results/ # baseline times across hardware 
-├── runs/ # where your runs will be stored
+```bash
+docker pull jiamin0630/kernelbench-api:latest
 ```
 
-## 🔧 Set up
-```
-conda create --name kernel-bench python=3.10
-conda activate kernel-bench
-pip install -r requirements.txt
-pip install -e . 
-```
+### 2. Run the Docker Container
 
-To call LLM API providers, set your `{INFERENCE_SERVER_PROVIDER}_API_KEY` API key.
+Run the container, mapping a local port to the container's port 8000 and granting it access to the host's GPUs.
 
-Running and profiling kernels require a GPU. 
-If you don't have GPU available locally, you can set up [Modal](https://modal.com/). Set up your modal token after creating an account by running `modal token new`. Then, use the `generate_and_eval_single_sample_modal.py` script.
-
-## 🚀 Usage
-### Run on a single problem 
-It is easier to get started with a single problem. This will fetch the problem, generate a sample, and evaluate the sample.
-
-```
-# for example, run level 2 problem 40 from huggingface
-
-python3 scripts/generate_and_eval_single_sample.py dataset_src="huggingface" level=2 problem_id=40
-
-# dataset_src could be "local" or "huggingface"
-# add .verbose_logging for more visbility
+```bash
+# Run the container in detached mode
+docker run --gpus all -d -p 8000:8000 --name kernelbench-service jiamin0630/kernelbench-api:latest
 ```
 
-### Run on all problems 
+**Command Breakdown**:
+- `--gpus all`: Grants the container access to all available host GPUs. **This is required.**
+- `-d`: Runs the container in the background (detached mode).
+- `-p 8000:8000`: Maps port 8000 on the host to port 8000 in the container. You can change the host port (the first number) if needed, e.g., `-p 30000:8000`.
+- `--name kernelbench-service`: Assigns a memorable name to the running container.
 
+You can check the container logs to ensure it started correctly:
+```bash
+docker logs kernelbench-service
 ```
-# 1. Generate responses and store kernels locally to runs/{run_name} directory
-python3 scripts/generate_samples.py run_name=test_hf_level_1 dataset_src=huggingface level=1 num_workers=50 server_type=deepseek model_name=deepseek-chat temperature=0
 
-# 2. Evaluate on all generated kernels in runs/{run_name} directory
-python3 scripts/eval_from_generations.py run_name=test_hf_level_1 dataset_src=local level=1 num_gpu_devices=8 timeout=300
+---
 
-# If you like to speedup evaluation, you can use parallelize compilation on CPUs before getting to evluation on GPUs
-# add build_cache=True and num_cpu_workers=<num_cpu_workers> to the command
-```
-### Analyze the eval results to compute Benchmark Performance
-We provide `scripts/benchmark_eval_analysis.py` to analyze the eval results to compute success rate, timing metric, and overall benchmark performance  `fast_p`. 
+## API Reference
 
-```
-python3 scripts/benchmark_eval_analysis.py run_name=test_hf_level_1 level=1 hardware=L40S_matx3 baseline=baseline_time_torch
-```
-If you are using a different hardware, you can generate the baseline time with `scripts/generate_baseline_time.py` script.
-We provide some reference baseline times a variety of NVIDIA GPUs across generations in `results/timing`, but we recommend you to generate your own baseline time for more accurate results (cluster power, software version, all affects timing result). See `results/timing/README.md` for more details.
+**Base URL**: `http://localhost:8000` (or your mapped host port)
 
-### Multi-Turn Framework
-We have also releaed the test-time framework [Caesar](https://github.com/simonguozirui/caesar) that are used in the multi-turn / iterative refinement experiments in our paper. You can use or modify this framework for high-throughput test-time scaling (both sequential and parallel) targeting KernelBench problems. 
+### Health Check Endpoint
 
-## 🛣️ Upcoming Roadmap
-- [ ] Triton Variant (To be merged)
-- [ ] Easy to use CoLab Notebook Example
-- [ ] Push button flow on Modal / Cloud Provider 
-- [ ] Integrate with more frameworks, such as [ThunderKittens](https://github.com/HazyResearch/ThunderKittens)
-- [ ] Add backward pass
-- [ ] Integrate with toolchains such as NCU
-See Issues for the ongoing roadmap and directions.
+- **`GET /`**
+  - **Description**: A health check endpoint to verify that the API service is running.
+  - **Success Response (200 OK)**:
+    ```json
+    {
+      "status": "ok",
+      "message": "Welcome to KernelBench API!"
+    }
+    ```
 
+### Evaluation Endpoint
 
+- **`POST /evaluate`**
+  - **Description**: The core endpoint for submitting a kernel for evaluation.
+  - **Request Body**: `application/json`
 
-## 🔍 Known Usage
-- [NVIDIA](https://developer.nvidia.com/blog/automating-gpu-kernel-generation-with-deepseek-r1-and-inference-time-scaling/) - Automating GPU Kernel Generation with DeepSeek-R1 and Inference Time Scaling
-- [METR](https://metr.org/blog/2025-02-14-measuring-automated-kernel-engineering/) - Measuring Automated Kernel Engineering
-- [Sakana AI](https://sakana.ai/ai-cuda-engineer/) - AI Cuda Engineer
-- [Project Popcorn](https://www.youtube.com/watch?v=mdDVkBeFy9A) - Triton Support for KernelBench, Data Scaling + SFT'd Kernel LLM
-- [Kevin](https://cognition.ai/blog/kevin-32b) - Kevin-32B: Multi-Turn RL for Writing CUDA Kernels
-- [Simple Test-Time Search](https://scalingintelligence.stanford.edu/blogs/fastkernels/) - by @anneouyang
+    **Fields**:
 
-If you are using KernelBench, we love to hear more about it!
+| Field | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `level` | integer | **Yes** | The problem level in the KernelBench set. |
+| `problem_id` | integer | **Yes** | The 1-based problem index within the level. |
+| `custom_code` | string | **Yes** | A string containing the full Python source code to evaluate. |
+| `eval_params` | object | No | Optional parameters to customize the evaluation. |
 
-## 🪪 License
-MIT. Check `LICENSE.md` for more details.
+**`eval_params` Object**:
 
+| Field | Type | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `num_correct_trials` | integer | Number of trials for the correctness check. | `3` |
+| `num_perf_trials` | integer | Number of trials for the performance benchmark. | `20` |
+| `measure_performance`| boolean | Whether to execute the performance test. | `True` |
 
-## Citation
-```bibtex
-@misc{ouyang2025kernelbenchllmswriteefficient,
-      title={KernelBench: Can LLMs Write Efficient GPU Kernels?}, 
-      author={Anne Ouyang and Simon Guo and Simran Arora and Alex L. Zhang and William Hu and Christopher Ré and Azalia Mirhoseini},
-      year={2025},
-      eprint={2502.10517},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2502.10517}, 
+  - **Success Response (200 OK)**: A JSON object containing the detailed evaluation results.
+  - **Error Responses**:
+    - `404`: The requested `level` or `problem_id` does not exist.
+    - `500`: An error occurred during compilation or evaluation.
+    - `503`: The server failed to load the benchmark dataset on startup.
+
+---
+
+## Usage Example
+
+This example demonstrates how to evaluate a custom kernel for Level 1, Problem 2.
+
+### 1. Create a Request File
+
+First, create a JSON file named `request.json` with the evaluation details. The `custom_code` field must contain the full source code as a single, escaped string.
+
+```json
+{
+  "level": 1,
+  "problem_id": 2,
+  "custom_code": "import torch\nfrom torch.utils.cpp_extension import load_inline\n\nmatrix_multiplication_source = '''\n#include <torch/extension.h>\n#include <cuda_runtime.h>\n\n__global__ void matrix_multiplication_kernel(const float* A, const float* B, float* C, int M, int K, int N) {\n    int row = blockIdx.y * blockDim.y + threadIdx.y;\n    int col = blockIdx.x * blockDim.x + threadIdx.x;\n\n    if (row < M && col < N) {\n        float sum = 0.0;\n        for (int i = 0; i < K; ++i) {\n            sum += A[row * K + i] * B[i * N + col];\n        }\n        C[row * N + col] = sum;\n    }\n}\n\ntorch::Tensor matrix_multiplication_cuda(torch::Tensor A, torch::Tensor B) {\n    int M = A.size(0);\n    int K = A.size(1);\n    int N = B.size(1);\n\n    auto C = torch::zeros({M, N}, A.options());\n\n    const int block_size = 16;\n    dim3 blocks((N + block_size - 1) / block_size, (M + block_size - 1) / block_size);\n    dim3 threads(block_size, block_size);\n\n    matrix_multiplication_kernel<<<blocks, threads>>>(A.data_ptr<float>(), B.data_ptr<float>(), C.data_ptr<float>(), M, K, N);\n\n    return C;\n}\n'''\n\nmatrix_multiplication_cpp_source = (\n    'torch::Tensor matrix_multiplication_cuda(torch::Tensor A, torch::Tensor B);'\n)\n"
 }
 ```
+
+### 2. Send the Request using `curl`
+
+Use a command-line tool like `curl` to send the POST request to the running service.
+
+```bash
+curl -X POST http://localhost:8000/evaluate \
+-H "Content-Type: application/json" \
+-d @request.json
+```
+
+### 3. Receive the Response
+
+If successful, the API will return a JSON object with the evaluation results.
+
+```json
+{
+  "compiled": true,
+  "correctness": true,
+  "metadata": {
+    "hardware": "NVIDIA GeForce RTX 4090",
+    "device": "cuda:0",
+    "correctness_trials": "(3 / 3)"
+  },
+  "runtime": 0.000123,
+  "runtime_stats": {
+    "mean": 0.000123,
+    "std": 1.2e-05,
+    "min": 0.00011,
+    "max": 0.00014,
+    "num_trials": 20,
+    "hardware": "NVIDIA GeForce RTX 4090",
+    "device": "cuda:0"
+  }
+}
+```
+*Note: `runtime` values and `hardware` details will vary based on your system.*
