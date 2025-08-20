@@ -10,6 +10,7 @@ ENV PYTHONUNBUFFERED=1
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     python3.10 \
+    python3.10-dev \
     python3-pip \
     git \
     && rm -rf /var/lib/apt/lists/*
@@ -17,19 +18,21 @@ RUN apt-get update && \
 # Create a non-root user for security
 RUN useradd -ms /bin/bash appuser
 USER appuser
+ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 # Set the working directory inside the container
 WORKDIR /app
 
 # Copy the requirements file first to leverage Docker layer caching
-COPY --chown=appuser:appuser requirements.txt .
+COPY --chown=appuser:appuser . .
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install -e .
 
 # Copy the rest of the application code into the container
-COPY --chown=appuser:appuser . .
+
 
 # Expose the port the app runs on
 EXPOSE 8000

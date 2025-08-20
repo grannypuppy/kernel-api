@@ -54,7 +54,7 @@ class EvaluateRequest(BaseModel):
 
 # --- Global State ---
 # This dictionary will hold the dataset, loaded at startup.
-kernel_bench_dataset: Optional[Dict[int, list[str]] = None
+kernel_bench_dataset: Optional[Dict[int, list[str]]] = None
 BASE_PATH = Path(__file__).parent
 
 # --- Startup Event ---
@@ -66,12 +66,17 @@ async def startup_event():
     """
     global kernel_bench_dataset
     logger.info("Loading KernelBench dataset...")
+    loaded_data = {}
     try:
-        # Assuming the 'KernelBench' directory is at the same level as this app
-        dataset_path = BASE_PATH / 'KernelBench'
-        if not dataset_path.exists():
-            raise FileNotFoundError(f"KernelBench dataset directory not found at {dataset_path}")
-        kernel_bench_dataset = await asyncio.to_thread(construct_kernelbench_dataset, dataset_path)
+        for level in (1,2,3,4):
+            logger.info(f"Loading level {level} dataset...")
+            level_dataset = await asyncio.to_thread(construct_kernelbench_dataset, level)
+            if level_dataset:
+                loaded_data[level] = level_dataset
+                logger.info(f"Level {level} dataset loaded with {len(level_dataset)} problems.")
+            else:
+                logger.warning(f"construct_kernelbench_dataset returned None for level {level}")
+        kernel_bench_dataset = loaded_data
         logger.info("KernelBench dataset loaded successfully.")
     except Exception as e:
         logger.error(f"Failed to load KernelBench dataset: {e}")
@@ -95,26 +100,21 @@ async def evaluate_kernel(request: EvaluateRequest):
     logger.info(f"Received evaluation request for level {request.level}, problem {request.problem_id}")
 
     # 1. Find the reference kernel
-    try:
-        level_data = kernel_bench_dataset.get(request.level)
-        if not level_data:
-            raise KeyError
-        reference_kernel = level_data.get(request.problem_id)
-        if not reference_kernel:
-            raise KeyError
-    except KeyError:
-        logger.warning(f"Problem not found: level={request.level}, id={request.problem_id}")
+    level_problems = kernel_bench_dataset.get(request.level)
+    if not level_problems:
         raise HTTPException(
             status_code=404,
-            detail=f"Problem not found for level {request.level} and problem_id {request.problem_id}"
+            detail=f"Level {request.level} not found or is empty."
         )
+    
+    reference_code_path = level_problems[request.problem_id - 1]
 
     # 2. Read the reference kernel source code
     try:
-        reference_code_path = get_kernel_path(reference_kernel, BASE_PATH)
+        logger.info(f"Reading reference kernel from: {reference_code_path}")
         original_model_src = await asyncio.to_thread(read_file, reference_code_path)
     except Exception as e:
-        logger.error(f"Failed to read reference kernel file {reference_kernel.path}: {e}")
+        logger.error(f"Failed to read reference kernel file {reference_code_path}: {e}")
         raise HTTPException(status_code=500, detail="Could not read reference kernel file.")
 
     # 3. Prepare evaluation parameters

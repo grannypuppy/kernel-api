@@ -15,3 +15,5 @@ ninja
 archon-ai
 einops
 dotenv
+fastapi
+uvicorn[standard]
