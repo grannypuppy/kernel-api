@@ -36,6 +36,19 @@ You can check the container logs to ensure it started correctly:
 docker logs kernelbench-service
 ```
 
+#### Advanced: Limiting GPU Memory Usage
+
+You can control the maximum GPU memory allocated to the service by setting the `GPU_MEMORY_FRACTION` environment variable. This is useful for preventing the service from consuming all available GPU memory on a shared machine. The value should be a float between `0.0` and `1.0`.
+
+For example, to limit the memory usage on all available GPUs to 50% of their capacity, use the `-e` flag:
+
+```bash
+docker run --gpus all -d -p 8000:8000 \
+  --name kernelbench-service \
+  -e GPU_MEMORY_FRACTION=0.5 \
+  jiamin0630/kernelbench-api:latest
+```
+
 ---
 
 ## API Reference

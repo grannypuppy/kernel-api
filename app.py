@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -62,8 +63,39 @@ BASE_PATH = Path(__file__).parent
 @app.on_event("startup")
 async def startup_event():
     """
-    Load the KernelBench dataset on server startup.
+    Load the KernelBench dataset and set GPU memory limits on server startup.
     """
+    logger.info("Server starting up...")
+
+    # Set per-process GPU memory fraction from environment variable
+    try:
+        if torch.cuda.is_available():
+            gpu_memory_fraction_env = os.environ.get("GPU_MEMORY_FRACTION")
+            if gpu_memory_fraction_env:
+                try:
+                    fraction = float(gpu_memory_fraction_env)
+                    if 0.0 < fraction <= 1.0:
+                        device_count = torch.cuda.device_count()
+                        for i in range(device_count):
+                            torch.cuda.set_per_process_memory_fraction(fraction, device=i)
+                            logger.info(
+                                f"GPU memory usage for device {i} limited to {fraction*100:.0f}% of its capacity."
+                            )
+                    else:
+                        logger.warning(
+                            f"GPU_MEMORY_FRACTION must be between 0.0 and 1.0, but got {fraction}. "
+                            "Ignoring the setting."
+                        )
+                except ValueError:
+                    logger.warning(
+                        f"Could not parse GPU_MEMORY_FRACTION '{gpu_memory_fraction_env}' as a float. "
+                        "Ignoring the setting."
+                    )
+        else:
+            logger.warning("CUDA not available. Cannot set GPU memory fraction.")
+    except Exception as e:
+        logger.error(f"An error occurred while setting GPU memory fraction: {e}", exc_info=True)
+
     global kernel_bench_dataset
     logger.info("Loading KernelBench dataset...")
     loaded_data = {}
