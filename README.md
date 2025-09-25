@@ -81,6 +81,7 @@ docker run --gpus all -d -p 8000:8000 \
 | `problem_id` | integer | **Yes** | The 1-based problem index within the level. |
 | `custom_code` | string | **Yes** | A string containing the full Python source code to evaluate. |
 | `eval_params` | object | No | Optional parameters to customize the evaluation. |
+| `device` | string | No | The CUDA device to run on (e.g., `cuda:0`). Defaults to the current default device. |
 
 **`eval_params` Object**:
 

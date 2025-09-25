@@ -49,6 +49,7 @@ class EvaluateRequest(BaseModel):
     problem_id: int = Field(..., description="The problem ID within the level.", example=1)
     custom_code: str = Field(..., description="The source code of the custom kernel to evaluate.", example="import torch\n\ndef kernel(a, b, c):\n    # ... kernel implementation ...")
     eval_params: Optional[EvalParams] = Field(None, description="Optional evaluation parameters.")
+    device: Optional[str] = Field(None, description="The CUDA device to run evaluation on (e.g., 'cuda:0'). Defaults to the current default device.", example="cuda:0")
 
 # The response will be the JSON representation of KernelExecResult, 
 # which is already a Pydantic model, so we don't need a separate response model.
@@ -157,7 +158,21 @@ async def evaluate_kernel(request: EvaluateRequest):
         logger.error("CUDA is not available. Cannot run evaluation.")
         raise HTTPException(status_code=500, detail="CUDA not available on the server.")
 
-    # 4. Run the evaluation
+    if request.device:
+        try:
+            device = torch.device(request.device)
+            # PyTorch doesn't validate the device index on creation, so we must check it manually.
+            if device.type != 'cuda':
+                raise HTTPException(status_code=400, detail=f"Unsupported device type '{device.type}'. Only 'cuda' devices are supported.")
+            if device.index is not None and device.index >= torch.cuda.device_count():
+                raise HTTPException(status_code=400, detail=f"Requested CUDA device index {device.index} is not available. Server has {torch.cuda.device_count()} devices.")
+            
+            logger.info(f"Evaluation will run on specified device: {request.device}")
+        except RuntimeError as e:
+            logger.error(f"Invalid device format '{request.device}': {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid device format: '{request.device}'. Use 'cuda' or 'cuda:N'.")
+
+    # 5. Run the evaluation
     try:
         logger.info("Starting kernel evaluation...")
         result = await asyncio.to_thread(
@@ -166,7 +181,8 @@ async def evaluate_kernel(request: EvaluateRequest):
             custom_model_src=request.custom_code,
             num_correct_trials=eval_params.num_correct_trials,
             num_perf_trials=eval_params.num_perf_trials,
-            measure_performance=eval_params.measure_performance
+            measure_performance=eval_params.measure_performance,
+            device=device
         )
         logger.info("Kernel evaluation finished.")
         return result

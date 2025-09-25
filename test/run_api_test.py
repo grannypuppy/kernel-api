@@ -38,10 +38,11 @@ def run_evaluation_test():
         "problem_id": PROBLEM_ID,
         "custom_code": custom_code_string,
         # You can also add optional eval_params here if needed
-        # "eval_params": {
-        #     "num_correct_trials": 5,
-        #     "num_perf_trials": 50
-        # }
+        "eval_params": {
+            "num_correct_trials": 3,
+            "num_perf_trials": 10
+        },
+        "device": "cuda:0"
     }
 
     # 3. Send the request to the API
