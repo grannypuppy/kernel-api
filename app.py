@@ -171,7 +171,9 @@ async def evaluate_kernel(request: EvaluateRequest):
         except RuntimeError as e:
             logger.error(f"Invalid device format '{request.device}': {e}")
             raise HTTPException(status_code=400, detail=f"Invalid device format: '{request.device}'. Use 'cuda' or 'cuda:N'.")
-
+    else:
+        device = torch.device("cuda:0")
+        
     # 5. Run the evaluation
     try:
         logger.info("Starting kernel evaluation...")

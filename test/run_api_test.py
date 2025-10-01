@@ -42,7 +42,7 @@ def run_evaluation_test():
             "num_correct_trials": 3,
             "num_perf_trials": 10
         },
-        "device": "cuda:0"
+        "device": ""
     }
 
     # 3. Send the request to the API
