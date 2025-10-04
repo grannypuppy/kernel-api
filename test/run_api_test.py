@@ -17,7 +17,7 @@ def run_evaluation_test():
     
     # The problem this code is intended for
     LEVEL = 1
-    PROBLEM_ID = 2
+    PROBLEM_ID = 1
 
     print(f"--- KernelBench API Test ---")
     print(f"Targeting API at: {API_URL}")

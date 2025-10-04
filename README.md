@@ -94,7 +94,6 @@ docker run --gpus all -d -p 8000:8000 \
   - **Success Response (200 OK)**: A JSON object containing the detailed evaluation results.
   - **Error Responses**:
     - `404`: The requested `level` or `problem_id` does not exist.
-    - `500`: An error occurred during compilation or evaluation.
     - `503`: The server failed to load the benchmark dataset on startup.
 
 ---

@@ -140,6 +140,13 @@ async def evaluate_kernel(request: EvaluateRequest):
             detail=f"Level {request.level} not found or is empty."
         )
     
+    # Check if problem_id is within valid range
+    if request.problem_id < 1 or request.problem_id > len(level_problems):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Problem ID {request.problem_id} is out of range. Level {request.level} has {len(level_problems)} problems (valid range: 1-{len(level_problems)})."
+        )
+    
     reference_code_path = level_problems[request.problem_id - 1]
 
     # 2. Read the reference kernel source code
@@ -189,8 +196,24 @@ async def evaluate_kernel(request: EvaluateRequest):
         logger.info("Kernel evaluation finished.")
         return result
     except Exception as e:
-        logger.error(f"An unexpected error occurred during evaluation: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"An internal error occurred during evaluation: {str(e)}")
+        if "CUDA error" in str(e):
+            metadata = {
+                "cuda_error": f"CUDA Error: {str(e)}",
+                "hardware": torch.cuda.get_device_name(device=device),
+                "device": str(device),
+            }  # log this for debugging as this usually signifies illegal memory access
+            eval_result = KernelExecResult(
+                compiled=False, correctness=False, metadata=metadata
+            )
+            return eval_result
+        else:
+            metadata = {"other_error": f"error: {str(e)}",
+                        "hardware": torch.cuda.get_device_name(device=device),
+                        "device": str(device)
+                        } # for debugging
+            eval_result = KernelExecResult(compiled=False, correctness=False, 
+                                                metadata=metadata)
+            return eval_result
 
 if __name__ == "__main__":
     # This allows running the app directly for debugging purposes.
