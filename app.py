@@ -3,6 +3,7 @@ import logging
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any
+from concurrent.futures import ProcessPoolExecutor
 
 import torch
 import uvicorn
@@ -16,9 +17,9 @@ logger = logging.getLogger(__name__)
 # Assuming the script is run from the root of the kernel-api directory
 # Adjust the path if necessary to correctly locate the 'src' and 'KernelBench' directories
 try:
-    from src.eval import eval_kernel_against_ref, KernelExecResult
-    from src.dataset import construct_kernelbench_dataset
-    from src.utils import read_file
+    from kernelbench.eval import eval_kernel_against_ref, KernelExecResult
+    from kernelbench.dataset import construct_kernelbench_dataset
+    from kernelbench.utils import read_file
 except ImportError as e:
     logger.error(f"Failed to import KernelBench modules: {e}")
     logger.error("Please ensure that the script is run from the project root and PYTHONPATH is set correctly.")
@@ -58,6 +59,8 @@ class EvaluateRequest(BaseModel):
 # This dictionary will hold the dataset, loaded at startup.
 kernel_bench_dataset: Optional[Dict[int, list[str]]] = None
 BASE_PATH = Path(__file__).parent
+# Process pool executor for CPU-bound tasks
+process_executor: Optional[ProcessPoolExecutor] = None
 
 # --- Startup Event ---
 
@@ -67,6 +70,12 @@ async def startup_event():
     Load the KernelBench dataset and set GPU memory limits on server startup.
     """
     logger.info("Server starting up...")
+    
+    # Initialize process pool executor
+    global process_executor
+    max_workers = int(os.environ.get("MAX_WORKERS", "4"))
+    process_executor = ProcessPoolExecutor(max_workers=max_workers)
+    logger.info(f"Process pool executor initialized with {max_workers} workers")
 
     # Set per-process GPU memory fraction from environment variable
     try:
@@ -101,9 +110,10 @@ async def startup_event():
     logger.info("Loading KernelBench dataset...")
     loaded_data = {}
     try:
+        loop = asyncio.get_event_loop()
         for level in (1,2,3,4):
             logger.info(f"Loading level {level} dataset...")
-            level_dataset = await asyncio.to_thread(construct_kernelbench_dataset, level)
+            level_dataset = await loop.run_in_executor(process_executor, construct_kernelbench_dataset, level)
             if level_dataset:
                 loaded_data[level] = level_dataset
                 logger.info(f"Level {level} dataset loaded with {len(level_dataset)} problems.")
@@ -115,6 +125,17 @@ async def startup_event():
         logger.error(f"Failed to load KernelBench dataset: {e}")
         # We will let the server start, but endpoints will fail until the dataset is available.
         kernel_bench_dataset = None
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Clean up resources on server shutdown.
+    """
+    global process_executor
+    if process_executor:
+        logger.info("Shutting down process pool executor...")
+        process_executor.shutdown(wait=True)
+        logger.info("Process pool executor shut down successfully.")
 
 # --- API Endpoints ---
 
@@ -152,7 +173,8 @@ async def evaluate_kernel(request: EvaluateRequest):
     # 2. Read the reference kernel source code
     try:
         logger.info(f"Reading reference kernel from: {reference_code_path}")
-        original_model_src = await asyncio.to_thread(read_file, reference_code_path)
+        loop = asyncio.get_event_loop()
+        original_model_src = await loop.run_in_executor(process_executor, read_file, reference_code_path)
     except Exception as e:
         logger.error(f"Failed to read reference kernel file {reference_code_path}: {e}")
         raise HTTPException(status_code=500, detail="Could not read reference kernel file.")
@@ -184,14 +206,16 @@ async def evaluate_kernel(request: EvaluateRequest):
     # 5. Run the evaluation
     try:
         logger.info("Starting kernel evaluation...")
-        result = await asyncio.to_thread(
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            process_executor,
             eval_kernel_against_ref,
-            original_model_src=original_model_src,
-            custom_model_src=request.custom_code,
-            num_correct_trials=eval_params.num_correct_trials,
-            num_perf_trials=eval_params.num_perf_trials,
-            measure_performance=eval_params.measure_performance,
-            device=device
+            original_model_src,
+            request.custom_code,
+            eval_params.num_correct_trials,
+            eval_params.num_perf_trials,
+            eval_params.measure_performance,
+            device
         )
         logger.info("Kernel evaluation finished.")
         return result
